@@ -7,11 +7,11 @@
 import sys
 import json
 
-for filename in sys.argv[1:]:
+for filename in sys.argv[2:]:
     data = open(filename).read()
     allrecords = json.loads(data)
     for record in allrecords:
-        if record["file_name"].endswith("htseq.counts.gz"):
+        if record["file_name"].endswith(sys.argv[1]):
             filename  = record["file_name"]
             entity    = record["associated_entities"][0]["entity_submitter_id"]
 
