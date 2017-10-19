@@ -22,6 +22,7 @@ for i in manifest:
     for retry in range(100):
         os.system("gdc-client download -d snps/ -m tmp.mani -t ~/Downloads/gdc-user-token.2017-10-04T09_38_47.351Z.txt --retry-amount 100 --wait-time 10 --log-file tmp.log >/dev/null")
         log = open("tmp.log")
+        failed = 0
         for j in log:
             if "Failed downloads" in j:
                 failed = int(j.split()[5])
