@@ -2,7 +2,7 @@ library(DESeq2)
 library(BiocParallel)
 library(RMySQL)
 
-argv       <- commanArgs(trailing = T)
+argv       <- commandArgs(trailing = T)
 genes      <- argv[1]
 muttype    <- argv[2]
 cancerid   <- argv[3]
@@ -19,7 +19,7 @@ if(is.na(filtergene)){
 	query.samples <- paste("select distinct(name) as samples from individual where cancer_cancerid = ",cancerid,";", sep = "")
 } else {
 	if(filterout == "include"){
-		query.samples <- paste("select distinct(name) as samples from individual inner join (mutation,genetable) on (individual_patientid = patientid and genetable_geneid = geneid) where cancer_cancerid = ",cancer," and genename = '",filtergene,"';",sep="")
+		query.samples <- paste("select distinct(name) as samples from individual inner join (mutation,genetable) on (individual_patientid = patientid and genetable_geneid = geneid) where cancer_cancerid = ",cancerid," and genename = '",filtergene,"';",sep="")
 	} else {
 		query.samples <- paste("select distinct(name) as samples from individual
 						where cancer_cancerid = ",cancerid," and 
@@ -27,7 +27,7 @@ if(is.na(filtergene)){
 							     select distinct(name) from individual
 							     	inner join (mutation,genetable) on (individual_patientid = patientid and genetable_geneid = geneid) 
 							     where cancer_cancerid = ",cancerid," and
-							     genename = '",cancerid,"'
+							     genename = '",filtergene,"'
 							     );",sep="")
 	}
 }
@@ -60,7 +60,7 @@ count   <- count[,index]
 # Get mutant samples for coldata
 genes <- strsplit(genes, ",")
 genes <- paste("genename = '",gsub(",","' or genename = '",genes),"'",sep="")
-query <- paste("select distinct(name) from individual inner join (mutation,genetable,muteffect) on (individual_patientid = patientid and genetable_geneid = geneid and muteffect_effectid = effectid) where cancer_cancerid = ",cancerid," and (",genes,") and effectname = '",muttype,"';",sep="")
+query <- paste("select distinct(name) as samples from individual inner join (mutation,genetable,muteffect) on (individual_patientid = patientid and genetable_geneid = geneid and muteffect_effectid = effectid) where cancer_cancerid = ",cancerid," and (",genes,") and effectname = '",muttype,"';",sep="")
 rs    <- dbSendQuery(con, query)
 raw   <- fetch(rs, n=-1)
 index <- grep(paste(raw$samples, collapse="|"), rownames(coldata))
