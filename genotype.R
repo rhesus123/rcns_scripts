@@ -72,4 +72,17 @@ des <- DESeq(des, parallel = T)
 des <- results(des, contrast = c("gene", "Mut", "WT"), parallel = T)
 des <- des[!is.na(des$padj) & des$padj < pvalue & abs(des$log2FoldChange) > foldchange,]
 
+# Filtering results
+if(genetable != "all"){
+	if(genetable == 'action'){
+		query <- "select genename from genetable where actionable = 1;"
+	} else {
+		query <- "select genename from genetable where fda = 1;"
+	}
+	rs    <- dbSendQuery(con, query)
+	raw   <- fetch(rs, n=-1)
+	index <- grep(paste(raw$genename, collapse="|"), rownames(des))
+	des   <- des[index,]
+}
+
 write.table(des, "expresults.tsv", quote = F, sep = "\t")
