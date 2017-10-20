@@ -12,19 +12,12 @@ testgene     <- argv[3]
 tmpprefix    <- argv[4]
 qvalcutoff   <- argv[5]
 foldchcutoff <- argv[6]
-filtergene   <- argv[7]
-filterout    <- argv[8]
-
-if(is.na(filtergene)){
-	# Filter option not set
-	print("ok")
-} else {
-	# Filter option set
-	print("not ok")
-}
+mutprev      <- as.numeric(argv[7])
+filtergene   <- argv[8]
+filterout    <- argv[9]
 
 # MySQL connection
-con  <- dbConnect(MySQL(), user="XXX", password="XXXX", dbname="mutarget", host="localhost")
+con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
 # Expression matrix
 query.exp <- paste("select submitid,genename,value from expression inner join genetable on genetable_geneid = geneid inner join individual on individual_patientid = patientid where individual_cancerid = ",cancerid,";",sep="")
@@ -38,6 +31,20 @@ count <- as.matrix(count)
 coldata <- data.frame(gene = rep("WT", ncol(count)))
 rownames(coldata) <- colnames(count)
 
+# Sample filtering TODO Maybe it is worth to put it into the query.exp?
+if(!is.na(filtergene)){
+	if(filterout == 'include'){
+		query <- paste("select distinct(name) as samples from individual inner join (mutation,genetable) on (individual_patientid = patientid and genetable_geneid = geneid) where cancer_cancerid = ",cancerid," and genename = '",filtergene,"';",sep="")
+	} else {
+		query <- paste("select distinct(name) as samples from individual where cancer_cancerid = ",cancerid," and name not in ( select distinct(name) from individual inner join (mutation,genetable) on (individual_patientid = patientid and genetable_geneid = geneid) where cancer_cancerid = ",cancerid," and genename = '",filtergene,"' );",sep="")
+	}
+	rs      <- dbSendQuery(con, query)
+	raw     <- fetch(rs, n=-1)
+	index   <- grep(paste(raw$samples, collapse="|"), rownames(coldata))
+	coldata <- coldata[index,,drop=F]
+	count   <- count[,index]
+}
+
 # Normalise raw counts
 des <- DESeqDataSetFromMatrix(count, colData = coldata, design =~1)
 vsd <- vst(des)
@@ -47,14 +54,15 @@ exp <- assay(vsd)
 winp <- data.frame(exp = exp[testgene,], mutant = 0)
 
 # Get all the genes
-#TODO Maybe we need to select genes with more than one sample
-query <- paste("select distinct(genename) from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid where effectname = '",effect,"' and individual_cancerid = ",cancerid,";",sep="")
+maxcount <- nrow(coldata) # maximum number of mutation should be less than all the samples (prevent one group syndrome)
+mincount <- trunc(nrow(coldata) * mutprev / 100) # minimum number of mutation calculated from mutation prevalence
+query <- paste("select * from (select genename,count(name) as patientcount from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid inner join individual on individual_patientid = patientid where effectname = '",effect,"' and individual_cancerid = ",cancerid," group by genename order by genename) as counttable where patientcount > ",mincount," and patientcount < ",maxcount,";", sep="")
 rs <- dbSendQuery(con, query)
 genes <- fetch(rs, n=-1)
 
 result_table <- data.frame(foldchange = rep(0, nrow(genes)), pvalue = rep(1,nrow(genes)), adj.pval = rep(1,nrow(genes)))
 rownames(result_table) <- genes$genename
-# Iterate through on genes and calculate Wilcox-test
+# Iterate through genes and calculate Wilcox-test
 for(i in 1:nrow(genes)){
 	winp$mutant <- 0
 	gene  <- genes[i,] # automatic coercion into vector
@@ -63,17 +71,24 @@ for(i in 1:nrow(genes)){
 	samples <- fetch(rs, n=-1)
 	index <- grep(paste(samples$name, collapse="|"), rownames(winp))
 	winp[index,]$mutant <- 1
-	s <- sum(winp$mutant)
-	if(s == nrow(winp) || s == 0){
-		next
-	}
+	# Check how many samples we have
+	#s <- sum(winp$mutant)
+	#if(s == nrow(winp) || s == 0){ # if there is no two groups
+	#	next
+	#}
 	testres <- wilcox.test(exp~mutant, data = winp)
 	result_table[i,]$pvalue <- testres$p.value
-	print(gene)
-	#TODO Somehow put foldchange into the table
+
+	#The original script use the ratio of the medians
+	expmu <- median(winp[winp$mutant == 1,1])
+	expwt <- median(winp[winp$mutant == 0,1])
+	result_table[i,]$foldchange <- max(expmu, expwt) / min(expmu, expwt)
 }
 
 # Multiple test correction
 result_table$adj.pval <- p.adjust(result_table$pvalue, "BH")
-write.table(result_table, "result.tsv", quote=F, sep ="\t")
+
 #Filtering and producing pictures
+result_table <- result_table[result_table$adj.pval < qvalcutoff & result_table$foldchange > foldchcutoff,]
+
+write.table(result_table, "result.tsv", quote=F, sep ="\t")
