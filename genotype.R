@@ -1,6 +1,7 @@
-library(DESeq2)
-library(BiocParallel)
-library(RMySQL)
+suppressMessages(library(DESeq2))
+suppressMessages(library(BiocParallel))
+suppressMessages(library(RMySQL))
+suppressMessages(library(edgeR))
 
 argv       <- commandArgs(trailing = T)
 genes      <- argv[1]
@@ -34,17 +35,20 @@ if(is.na(filtergene)){
 
 # Register multicore
 register(MulticoreParam(cpunum))
-
+proc.time()
+print("Start")
 # MySQL connection
 con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
 # Expression matrix
-query <- paste("select submitid,genename,value from expression inner join genetable on genetable_geneid = geneid inner join individual on individual_patientid = patientid where individual_cancerid = ",cancerid,";",sep="")
+query <- paste("select submitid,genename,value from expression force index (expression_genetable_fk,expression_individual_fk) inner join genetable on genetable_geneid = geneid inner join individual on individual_patientid = patientid where individual_cancerid = ",cancerid,";",sep="")
 rs    <- dbSendQuery(con, query)
 raw   <- fetch(rs, n=-1)
 count <- xtabs(value~genename+submitid, data = raw)
 count <- as.data.frame.matrix(count)
 count <- as.matrix(count)
+proc.time()
+print("Expression matrix")
 
 # Column data
 coldata <- data.frame(gene = factor(rep("WT", ncol(count)), levels = c("WT","Mut")))
@@ -65,12 +69,18 @@ rs    <- dbSendQuery(con, query)
 raw   <- fetch(rs, n=-1)
 index <- grep(paste(raw$samples, collapse="|"), rownames(coldata))
 coldata$gene[index] <- "Mut"
+proc.time()
+print("Get mutant samples")
 
-# Differential expression
-des <- DESeqDataSetFromMatrix(count, colData = coldata, design =~gene)
-des <- DESeq(des, parallel = T)
-des <- results(des, contrast = c("gene", "Mut", "WT"), parallel = T)
-des <- des[!is.na(des$padj) & des$padj < pvalue & abs(des$log2FoldChange) > foldchange,]
+# Differential expression using edgeR
+edge <- DGEList(counts = count, group = coldata$gene)
+edge <- calcNormFactors(edge)
+edge <- estimateDisp(edge)
+edge <- exactTest(edge)
+des  <- as.data.frame(topTags(edge, n = 32000, p.value = pvalue))
+des  <- des[abs(des$logFC) > foldchange,]
+proc.time()
+print("Differential expression")
 
 # Filtering results
 if(genetable != "all"){
@@ -86,3 +96,5 @@ if(genetable != "all"){
 }
 
 write.table(des, "expresults.tsv", quote = F, sep = "\t")
+proc.time()
+print("End of script")
