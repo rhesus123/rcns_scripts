@@ -2,7 +2,6 @@
 
 suppressMessages(library(DESeq2))
 suppressMessages(library(RMySQL))
-suppressMessages(library(BiocParallel))
 
 # Command line arguments
 argv         <- commandArgs(trailing = T)
@@ -15,14 +14,14 @@ foldchcutoff <- argv[6]
 mutprev      <- as.numeric(argv[7])
 filtergene   <- argv[8]
 filterout    <- argv[9]
-
+print(getwd())
 proc.time()
 print("Start")
 # MySQL connection
 con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
 # Expression matrix
-query.exp <- paste("select submitid,genename,value from expression force index (expression_genetable_fk,expression_individual_fk) inner join genetable on genetable_geneid = geneid inner join individual on individual_patientid = patientid where individual_cancerid = ",cancerid,";",sep="")
+query.exp <- paste("select submitid,genename,value from exphelper where cancerid = ",cancerid,";",sep="")
 rs    <- dbSendQuery(con, query.exp)
 raw   <- fetch(rs, n=-1)
 count <- xtabs(value~genename+submitid, data = raw)
