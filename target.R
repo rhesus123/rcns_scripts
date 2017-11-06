@@ -63,25 +63,22 @@ winp <- data.frame(exp = exp[testgene,], mutant = 0)
 # Get all the genes
 maxcount <- nrow(coldata) # maximum number of mutation should be less than all the samples (prevent one group syndrome)
 mincount <- trunc(nrow(coldata) * mutprev / 100) # minimum number of mutation calculated from mutation prevalence
-query <- paste("select * from (select genename,count(name) as patientcount from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid inner join individual on individual_patientid = patientid where effectid = '",effect,"' and individual_cancerid = ",cancerid," group by genename order by genename) as counttable where patientcount > ",mincount," and patientcount < ",maxcount,";", sep="")
+query.g <- paste("select genename from (select genename,count(name) as patientcount from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid inner join individual on individual_patientid = patientid where effectid = '",effect,"' and individual_cancerid = ",cancerid," group by genename order by genename) as counttable where patientcount > ",mincount," and patientcount < ",maxcount, sep="")
+query <- paste("select name,genename from mutation inner join (muteffect,cancer,genetable,individual as a) on (muteffect_effectid = effectid and mutation.individual_cancerid = cancerid and genetable_geneid = geneid and patientid = individual_patientid) where cancerid = 4 and effectid = 12 and genename in (",query.g,");",sep="")
 rs <- dbSendQuery(con, query)
-genes <- fetch(rs, n=-1)
-proc.time()
-print("MESSAGE: Get all genes")
+mutmatrix <- fetch(rs, n=-1)
+mutmatrix <- as.data.frame.matrix(table(mutmatrix$genename, mutmatrix$name))
 
-result_table <- data.frame(foldchange = rep(0, nrow(genes)), pvalue = rep(1,nrow(genes)), adj.pval = rep(1,nrow(genes)))
-rownames(result_table) <- genes$genename
+result_table <- data.frame(foldchange = rep(0, nrow(mutmatrix)), pvalue = rep(1,nrow(mutmatrix)), adj.pval = rep(1,nrow(mutmatrix)))
+rownames(result_table) <- rownames(mutmatrix)
+
 # Iterate through genes and calculate Wilcox-test
 proc.time()
 print("MESSAGE: Start iteration")
-
-for(i in 1:nrow(genes)){
+for(i in 1:nrow(mutmatrix)){
 	winp$mutant <- 0
-	gene  <- genes[i,1] # automatic coercion into vector
-	query <- paste("select name from mutation inner join (muteffect,cancer,genetable,individual as a) on (muteffect_effectid = effectid and mutation.individual_cancerid = cancerid and genetable_geneid = geneid and patientid = individual_patientid) where cancerid = ",cancerid," and effectid = '",effect,"' and genename = '",gene,"';", sep="")
-	rs <- dbSendQuery(con, query)
-	samples <- fetch(rs, n=-1)
-	index <- grep(paste(samples$name, collapse="|"), rownames(winp))
+	samples <- colnames(mutmatrix)[mutmatrix[i,] > 0]
+	index <- grep(paste(samples, collapse="|"), rownames(winp))
 	winp[index,]$mutant <- 1
 	# Check how many samples we have
 	s <- sum(winp$mutant)
