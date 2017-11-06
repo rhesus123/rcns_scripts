@@ -1,16 +1,16 @@
 # Script for mutarget target analysis
 
-suppressMessages(library(DESeq2))
+suppressMessages(library(edgeR))
 suppressMessages(library(RMySQL))
 
 # Command line arguments
 argv         <- commandArgs(trailing = T)
-cancerid     <- argv[1]
-effect       <- argv[2]
-testgene     <- argv[3]
-tmpprefix    <- argv[4]
-qvalcutoff   <- argv[5]
-foldchcutoff <- argv[6]
+tmpprefix    <- argv[1]
+cancerid     <- argv[2]
+effect       <- argv[3]
+testgene     <- argv[4]
+qvalcutoff   <- as.numeric(argv[5])
+foldchcutoff <- as.numeric(argv[6])
 mutprev      <- as.numeric(argv[7])
 filtergene   <- argv[8]
 filterout    <- argv[9]
@@ -28,7 +28,7 @@ count <- xtabs(value~genename+submitid, data = raw)
 count <- as.data.frame.matrix(count)
 count <- as.matrix(count)
 proc.time()
-print("Exp matrix")
+print("MESSAGE: Exp matrix")
 
 # Column data
 coldata <- data.frame(gene = rep("WT", ncol(count)))
@@ -48,14 +48,14 @@ if(!is.na(filtergene)){
 	count   <- count[,index]
 }
 proc.time()
-print("Sample filtering")
+print("MESSAGE: Sample filtering")
 
 # Normalise raw counts
-des <- DESeqDataSetFromMatrix(count, colData = coldata, design =~1)
-vsd <- vst(des)
-exp <- assay(vsd)
+edge <- DGEList(counts = count, group = coldata$gene)
+edge <- calcNormFactors(edge)
+exp  <- cpm(edge)
 proc.time()
-print("Normalisation")
+print("MESSAGE: Normalisation")
 
 # Select the gene of interest
 winp <- data.frame(exp = exp[testgene,], mutant = 0)
@@ -63,21 +63,22 @@ winp <- data.frame(exp = exp[testgene,], mutant = 0)
 # Get all the genes
 maxcount <- nrow(coldata) # maximum number of mutation should be less than all the samples (prevent one group syndrome)
 mincount <- trunc(nrow(coldata) * mutprev / 100) # minimum number of mutation calculated from mutation prevalence
-query <- paste("select * from (select genename,count(name) as patientcount from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid inner join individual on individual_patientid = patientid where effectname = '",effect,"' and individual_cancerid = ",cancerid," group by genename order by genename) as counttable where patientcount > ",mincount," and patientcount < ",maxcount,";", sep="")
+query <- paste("select * from (select genename,count(name) as patientcount from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid inner join individual on individual_patientid = patientid where effectid = '",effect,"' and individual_cancerid = ",cancerid," group by genename order by genename) as counttable where patientcount > ",mincount," and patientcount < ",maxcount,";", sep="")
 rs <- dbSendQuery(con, query)
 genes <- fetch(rs, n=-1)
 proc.time()
-print("Get all genes")
+print("MESSAGE: Get all genes")
 
 result_table <- data.frame(foldchange = rep(0, nrow(genes)), pvalue = rep(1,nrow(genes)), adj.pval = rep(1,nrow(genes)))
 rownames(result_table) <- genes$genename
 # Iterate through genes and calculate Wilcox-test
 proc.time()
-print("Start iteration")
+print("MESSAGE: Start iteration")
+
 for(i in 1:nrow(genes)){
 	winp$mutant <- 0
 	gene  <- genes[i,1] # automatic coercion into vector
-	query <- paste("select name from mutation inner join (muteffect,cancer,genetable,individual as a) on (muteffect_effectid = effectid and mutation.individual_cancerid = cancerid and genetable_geneid = geneid and patientid = individual_patientid) where cancerid = ",cancerid," and effectname = '",effect,"' and genename = '",gene,"';", sep="")
+	query <- paste("select name from mutation inner join (muteffect,cancer,genetable,individual as a) on (muteffect_effectid = effectid and mutation.individual_cancerid = cancerid and genetable_geneid = geneid and patientid = individual_patientid) where cancerid = ",cancerid," and effectid = '",effect,"' and genename = '",gene,"';", sep="")
 	rs <- dbSendQuery(con, query)
 	samples <- fetch(rs, n=-1)
 	index <- grep(paste(samples$name, collapse="|"), rownames(winp))
@@ -97,7 +98,7 @@ for(i in 1:nrow(genes)){
 	result_table[i,]$foldchange <- max(expmu, expwt) / min(expmu, expwt)
 }
 proc.time()
-print("End iteration")
+print("MESSAGE: End iteration")
 
 # Multiple test correction
 result_table$adj.pval <- p.adjust(result_table$pvalue, "BH")
@@ -105,4 +106,4 @@ result_table$adj.pval <- p.adjust(result_table$pvalue, "BH")
 #Filtering and producing pictures
 result_table <- result_table[result_table$adj.pval < qvalcutoff & result_table$foldchange > foldchcutoff,]
 
-write.table(result_table, "result.tsv", quote=F, sep ="\t")
+write.table(result_table, paste(tmpprefix, "res.tsv",sep="."), quote=F, sep ="\t")

@@ -2,15 +2,16 @@ suppressMessages(library(RMySQL))
 suppressMessages(library(edgeR))
 
 argv       <- commandArgs(trailing = T)
-genes      <- argv[1]
-muttype    <- argv[2]
-cancerid   <- argv[3]
-pvalue     <- argv[4]
-foldchange <- argv[5]
-genetable  <- argv[6]
-plotnum    <- argv[7]
-filtergene <- argv[8]
-filterout  <- argv[9]
+tmpprefix  <- argv[1]
+genes      <- argv[2]
+muttype    <- argv[3]
+cancerid   <- argv[4]
+pvalue     <- argv[5]
+foldchange <- argv[6]
+genetable  <- argv[7]
+plotnum    <- argv[8]
+filtergene <- argv[9]
+filterout  <- argv[10]
 
 if(is.na(filtergene)){
 	# No filter
@@ -32,12 +33,11 @@ if(is.na(filtergene)){
 
 # Register multicore
 proc.time()
-print("Start")
+print("MESSAGE: Start")
 # MySQL connection
 con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
 # Expression matrix
-#query <- paste("select submitid,genename,value from expression force index (expression_genetable_fk,expression_individual_fk) inner join genetable on genetable_geneid = geneid inner join individual on individual_patientid = patientid where individual_cancerid = ",cancerid,";",sep="")
 query <- paste("select submitid,genename,value from exphelper where cancerid = ",cancerid,";",sep="")
 rs    <- dbSendQuery(con, query)
 raw   <- fetch(rs, n=-1)
@@ -45,7 +45,7 @@ count <- xtabs(value~genename+submitid, data = raw)
 count <- as.data.frame.matrix(count)
 count <- as.matrix(count)
 proc.time()
-print("Expression matrix")
+print("MESSAGE: Expression matrix")
 
 # Column data
 coldata <- data.frame(gene = factor(rep("WT", ncol(count)), levels = c("WT","Mut")))
@@ -66,18 +66,25 @@ rs    <- dbSendQuery(con, query)
 raw   <- fetch(rs, n=-1)
 index <- grep(paste(raw$samples, collapse="|"), rownames(coldata))
 coldata$gene[index] <- "Mut"
+if(length(coldata[coldata$gene == "Mut",]) == 0){
+	print("MESSAGE: Not enough samples with alteration to split into cohorts")
+	quit(save="no")
+
+}
 proc.time()
-print("Get mutant samples")
+print("MESSAGE: Get mutant samples")
 
 # Differential expression using edgeR
 edge <- DGEList(counts = count, group = coldata$gene)
+keep <- rowSums(cpm(edge) > 1) > 2
+edge <- edge[keep, , keep.lib.sizes=FALSE]
 edge <- calcNormFactors(edge)
 edge <- estimateDisp(edge)
 edge <- exactTest(edge)
 des  <- as.data.frame(topTags(edge, n = 32000, p.value = pvalue))
 des  <- des[abs(des$logFC) > foldchange,]
 proc.time()
-print("Differential expression")
+print("MESSAGE: Differential expression")
 
 # Filtering results
 if(genetable != "all"){
@@ -92,6 +99,6 @@ if(genetable != "all"){
 	des   <- des[index,]
 }
 
-write.table(des, "expresults.tsv", quote = F, sep = "\t")
+write.table(des, paste(tmpprefix, "exp.tsv", sep = "."), quote = F, sep = "\t")
 proc.time()
-print("End of script")
+print("MESSAGE: End of script")
