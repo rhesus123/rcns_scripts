@@ -14,9 +14,8 @@ foldchcutoff <- as.numeric(argv[6])
 mutprev      <- as.numeric(argv[7])
 filtergene   <- argv[8]
 filterout    <- argv[9]
-print(getwd())
 proc.time()
-print("Start")
+print("MESSAGE: Start")
 # MySQL connection
 con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
@@ -64,7 +63,7 @@ winp <- data.frame(exp = exp[testgene,], mutant = 0)
 maxcount <- nrow(coldata) # maximum number of mutation should be less than all the samples (prevent one group syndrome)
 mincount <- trunc(nrow(coldata) * mutprev / 100) # minimum number of mutation calculated from mutation prevalence
 query.g <- paste("select genename from (select genename,count(name) as patientcount from genetable inner join mutation on geneid = genetable_geneid inner join muteffect on muteffect_effectid = effectid inner join individual on individual_patientid = patientid where effectid = '",effect,"' and individual_cancerid = ",cancerid," group by genename order by genename) as counttable where patientcount > ",mincount," and patientcount < ",maxcount, sep="")
-query <- paste("select name,genename from mutation inner join (muteffect,cancer,genetable,individual as a) on (muteffect_effectid = effectid and mutation.individual_cancerid = cancerid and genetable_geneid = geneid and patientid = individual_patientid) where cancerid = 4 and effectid = 12 and genename in (",query.g,");",sep="")
+query <- paste("select name,genename from mutation inner join (muteffect,cancer,genetable,individual as a) on (muteffect_effectid = effectid and mutation.individual_cancerid = cancerid and genetable_geneid = geneid and patientid = individual_patientid) where cancerid = ",cancerid," and effectid = ",effect," and genename in (",query.g,");",sep="")
 rs <- dbSendQuery(con, query)
 mutmatrix <- fetch(rs, n=-1)
 mutmatrix <- as.data.frame.matrix(table(mutmatrix$genename, mutmatrix$name))
@@ -88,7 +87,6 @@ for(i in 1:nrow(mutmatrix)){
 	}
 	testres <- wilcox.test(exp~mutant, data = winp)
 	result_table[i,]$pvalue <- testres$p.value
-
 	#The original script use the ratio of the medians
 	expmu <- median(winp[winp$mutant == 1,1])
 	expwt <- median(winp[winp$mutant == 0,1])
@@ -103,4 +101,4 @@ result_table$adj.pval <- p.adjust(result_table$pvalue, "BH")
 #Filtering and producing pictures
 result_table <- result_table[result_table$adj.pval < qvalcutoff & result_table$foldchange > foldchcutoff,]
 
-write.table(result_table, paste(tmpprefix, "res.tsv",sep="."), quote=F, sep ="\t")
+write.table(result_table, paste(tmpprefix, "tsv",sep="."), quote=F, sep ="\t")

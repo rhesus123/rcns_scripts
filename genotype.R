@@ -6,8 +6,8 @@ tmpprefix  <- argv[1]
 genes      <- argv[2]
 muttype    <- argv[3]
 cancerid   <- argv[4]
-pvalue     <- argv[5]
-foldchange <- argv[6]
+pvalue     <- as.numeric(argv[5])
+foldchange <- as.numeric(argv[6])
 genetable  <- argv[7]
 plotnum    <- argv[8]
 filtergene <- argv[9]
@@ -80,8 +80,8 @@ keep <- rowSums(cpm(edge) > 1) > 2
 edge <- edge[keep, , keep.lib.sizes=FALSE]
 edge <- calcNormFactors(edge)
 edge <- estimateDisp(edge)
-edge <- exactTest(edge)
-des  <- as.data.frame(topTags(edge, n = 32000, p.value = pvalue))
+des  <- exactTest(edge)
+des  <- as.data.frame(topTags(des, n = 32000, p.value = pvalue))
 des  <- des[abs(des$logFC) > foldchange,]
 proc.time()
 print("MESSAGE: Differential expression")
@@ -99,6 +99,22 @@ if(genetable != "all"){
 	des   <- des[index,]
 }
 
-write.table(des, paste(tmpprefix, "exp.tsv", sep = "."), quote = F, sep = "\t")
+write.table(des, paste(tmpprefix, "tsv", sep = "."), quote = F, sep = "\t")
+
+proc.time()
+print("MESSAGE: Creating plots")
+if(plotnum == "all" | as.numeric(plotnum) > nrow(des)){
+	plotnum <- nrow(des)
+} else {
+	plotnum <- as.numeric(plotnum)
+}
+
+for(index in 1:plotnum){
+   gene <- rownames(des)[index]
+   pdf(paste(tmpprefix,gene,"pdf",sep="."))
+   boxplot(cpm(edge)[gene, rownames(coldata[coldata$gene == "Mut",,drop=F])], cpm(edge)[gene,rownames(coldata[coldata$gene == "WT",,drop=F])], main = paste(gene, "expression", sep=" "), names = c("Mutant", "WT"))
+   dev.off()
+}
+
 proc.time()
 print("MESSAGE: End of script")
