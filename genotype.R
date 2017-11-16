@@ -38,12 +38,7 @@ print("MESSAGE: Start")
 con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
 # Expression matrix
-query <- paste("select submitid,genename,value from exphelper where cancerid = ",cancerid,";",sep="")
-rs    <- dbSendQuery(con, query)
-raw   <- fetch(rs, n=-1)
-count <- xtabs(value~genename+submitid, data = raw)
-count <- as.data.frame.matrix(count)
-count <- as.matrix(count)
+count <- as.matrix(read.table(paste(cancerid, "tsv", sep = "."), check.names = F, sep = "\t"))
 proc.time()
 print("MESSAGE: Expression matrix")
 

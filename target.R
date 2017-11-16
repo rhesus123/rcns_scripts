@@ -20,12 +20,7 @@ print("MESSAGE: Start")
 con  <- dbConnect(MySQL(), user="XXXX", password="XXXX", dbname="mutarget", host="localhost")
 
 # Expression matrix
-query.exp <- paste("select submitid,genename,value from exphelper where cancerid = ",cancerid,";",sep="")
-rs    <- dbSendQuery(con, query.exp)
-raw   <- fetch(rs, n=-1)
-count <- xtabs(value~genename+submitid, data = raw)
-count <- as.data.frame.matrix(count)
-count <- as.matrix(count)
+count <- as.matrix(read.table(paste(cancerid, "tsv", sep = "."), check.names = F, sep = "\t"))
 proc.time()
 print("MESSAGE: Exp matrix")
 
@@ -76,6 +71,7 @@ proc.time()
 print("MESSAGE: Start iteration")
 for(i in 1:nrow(mutmatrix)){
 	winp$mutant <- 0
+	gene <- rownames(mutmatrix)[i]
 	samples <- colnames(mutmatrix)[mutmatrix[i,] > 0]
 	index <- grep(paste(samples, collapse="|"), rownames(winp))
 	winp[index,]$mutant <- 1
