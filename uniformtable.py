@@ -8,7 +8,6 @@
 import sys
 
 exp = open(sys.argv[1]).readline().rstrip().split("\t")
-
 mutfile = open(sys.argv[2])
 convert = dict()
 header = mutfile.readline().rstrip().split("\t")
