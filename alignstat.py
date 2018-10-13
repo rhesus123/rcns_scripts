@@ -44,6 +44,8 @@ print("mapped\talignment_len\tmismatchnum\tindelnum\tread_len")
 for i in reads:
     output = []
     #alignment_len = i.reference_end - i.reference_start
+    if i.is_secondary or i.is_supplementary:
+        continue
     if i.is_unmapped:
         mapped = "0"
         mismatchnum = 0
