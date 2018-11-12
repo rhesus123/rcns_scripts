@@ -5,7 +5,7 @@ db.readline()
 for i in db:
     fields = i.rstrip().split()
     motifid = fields[0]
-    jasparid = fields[2]
+    jasparid = fields[1]
     matrixfile = open(jasparid + ".meme")
     counter = 0
     for j in matrixfile:
