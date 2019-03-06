@@ -22,9 +22,10 @@ for i in vcf:
     output = [key]
     for gt in range(9,len(fields)):
         tag = fields[gt].split(":")[0]
-        # I know in my case the number of genotypes cannot be larger than 6
-        a = tag[0]
-        b = tag[2]
+        subtag = tag.split("/")
+        #in case numbers go higher than 9
+        a = subtag[0]
+        b = subtag[1]
         if (a == "." or a == "0") and a == b:
             output.append("0")
         elif a == b:
